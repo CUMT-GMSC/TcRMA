@@ -1,0 +1,46 @@
+0	adjacent_to	adjacent to
+1	affects	affects
+2	analyzes	analyzes
+3	assesses_effect_of	assesses effect of
+4	associated_with	associated with
+5	carries_out	carries out
+6	causes	causes
+7	co-occurs_with	co-occurs with
+8	complicates	complicates
+9	conceptual_part_of	conceptual part of
+10	conceptually_related_to	conceptually related to
+11	connected_to	connected to
+12	consists_of	consists of
+13	contains	contains
+14	degree_of	degree of
+15	derivative_of	derivative of
+16	developmental_form_of	developmental form of
+17	diagnoses	diagnoses
+18	disrupts	disrupts
+19	evaluation_of	evaluation of
+20	exhibits	exhibits
+21	indicates	indicates
+22	ingredient_of	ingredient of
+23	interacts_with	interacts with
+24	interconnects	interconnects
+25	isa	is a
+26	issue_in	issue in
+27	location_of	location of
+28	manages	manages
+29	manifestation_of	manifestation of
+30	measurement_of	measurement of
+31	measures	measures
+32	method_of	method of
+33	occurs_in	occurs in
+34	part_of	part of
+35	performs	performs
+36	practices	practices
+37	precedes	precedes
+38	prevents	prevents
+39	process_of	process of
+40	produces	produces
+41	property_of	property of
+42	result_of	result of
+43	surrounds	surrounds
+44	treats	treats
+45	uses	uses

@@ -1,0 +1,5 @@
+torch==2.4.1
+numpy==1.26.4
+torch_scatter==2.1.2
+scikit_learn==1.6.1
+spacy==3.7.2

@@ -1,0 +1,43 @@
+{
+    "dual_view_config": {
+        "entity_view": {
+            "description": "Traditional entity-relation-entity view",
+            "use_original_adjacency": true,
+            "normalization": "symmetric"
+        },
+        "relation_view": {
+            "description": "Relation-entity-relation view for capturing relation patterns",
+            "threshold": 0.2,
+            "filter_inverse_relations": true,
+            "use_semantic_filtering": false
+        },
+        "fusion": {
+            "method": "concatenation_linear",
+            "fusion_dropout": 0.1,
+            "weight_entity_view": 0.5,
+            "weight_relation_view": 0.5
+        },
+        "semantic_features": {
+            "use_relation_text": true,
+            "relation_text_embedding_dim": 768,
+            "text_encoder": "bert-base-uncased"
+        }
+    },
+    "model_config": {
+        "compgcn_layers": 2,
+        "gcn_dim": 200,
+        "dropout": 0.1,
+        "activation": "tanh",
+        "composition_operation": "corr"
+    },
+    "training_config": {
+        "batch_size": 128,
+        "learning_rate": 0.001,
+        "l2_regularization": 0.0,
+        "max_epochs": 500,
+        "early_stopping": {
+            "patience": 20,
+            "monitor": "valid_mrr"
+        }
+    }
+}
