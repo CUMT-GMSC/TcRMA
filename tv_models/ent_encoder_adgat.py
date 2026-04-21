@@ -17,7 +17,7 @@ class ent_adGat(MessagePassing):
 
 		self.beta = beta
 		self.bias = bias
-		self.act 		= act #激活函数
+		self.act 		= act 
 		self.device		= None
 
 		# self.w_loop = torch.nn.Linear(in_channels, out_channels).cuda()
@@ -38,13 +38,11 @@ class ent_adGat(MessagePassing):
 		self.activation = torch.nn.Tanh() #torch.nn.Tanh()
 		self.leaky_relu = torch.nn.LeakyReLU(negative_slope=0.2, inplace=True)
 		
-		# 添加用于动态聚合的注意力层
+
 		self.gate_w_in = torch.nn.Linear(out_channels, out_channels).cuda()
 		self.gate_w_loop = torch.nn.Linear(out_channels, out_channels).cuda()
 		self.gate_att = torch.nn.Linear(2*out_channels, 2, bias=False).cuda()
 		
-		# 关系嵌入维度投影层（用于处理rel_embed维度不匹配的情况）
-		# 在message中，rel_embed可能来自关系编码器的输出（out_channels），需要投影到in_channels
 		self.rel_proj = torch.nn.Linear(out_channels, in_channels, bias=False).cuda()
 
 		if self.p.bias: 
@@ -70,17 +68,14 @@ class ent_adGat(MessagePassing):
         # loop_res = self.propagate(edge_index=loop_index, x=x, edge_type=loop_type, rel_emb=rel_emb, pre_alpha=pre_alpha, mode="loop")
 		loop_res = self.res_w(x)
 		
-		# 通过注意力机制动态聚合in_res和loop_res
 		in_res_dropped = self.drop(in_res)
 		loop_res_dropped = self.drop(loop_res)
 		
-		# 计算注意力权重
 		gate_in = self.gate_w_in(in_res_dropped)
 		gate_loop = self.gate_w_loop(loop_res_dropped)
 		gate_concat = torch.cat([gate_in, gate_loop], dim=1)
 		gate_weights = torch.softmax(self.gate_att(gate_concat), dim=1)
 		
-		# 动态聚合
 		out = gate_weights[:, 0:1] * in_res_dropped + gate_weights[:, 1:2] * loop_res_dropped
 
 		if self.bias:
@@ -96,11 +91,9 @@ class ent_adGat(MessagePassing):
 
 		return out, processed_rel, self.alpha.detach()
 	
-	 #消息传递函数，根据模式选择权重，应用关系变换和归一化
 	def message(self,x_i, x_j, edge_type, rel_embed, ptr, index, size_i, pre_alpha):
 		rel_embed = torch.index_select(rel_embed, 0, edge_type)
 		
-		# 如果关系嵌入维度与实体嵌入维度不匹配，进行投影
 		if rel_embed.size(1) != x_j.size(1):
 			rel_embed = self.rel_proj(rel_embed)
 		
@@ -115,11 +108,11 @@ class ent_adGat(MessagePassing):
         
 		out = torch.cat((trans_in, trans_out), dim=0)
         
-		b = self.leaky_relu(self.w_att(torch.cat((x_i, rel_embed, x_j), dim=1))).cuda()#注意力计算
-		b = self.a(b).float()#再经过一个线性层 self.a（输出为 1 维），将注意力特征压缩为一个标量
-		alpha = softmax(b, index, ptr, size_i)#对所有入边的注意力分数做 softmax，归一化为概率分布，得到每条边的注意力权重 α index, ptr, size_i 用于指定 softmax 的分组（即每个节点的入边）
+		b = self.leaky_relu(self.w_att(torch.cat((x_i, rel_embed, x_j), dim=1))).cuda()
+		b = self.a(b).float()
+		alpha = softmax(b, index, ptr, size_i)
 		alpha = F.dropout(alpha, p=self.drop_ratio, training=self.training, inplace=False)
-        #如果有前一层的注意力分布 pre_alpha 且 β 不为 0，则用 β 做加权融合（残差机制），否则直接用当前 α。
+       
 		if pre_alpha!=None and self.beta != 0:
 			self.alpha = alpha*(1-self.beta) + pre_alpha*(self.beta)
 		else:
@@ -128,7 +121,6 @@ class ent_adGat(MessagePassing):
 
 		return out 
 	
-    #关系变换方法，支持三种操作模式：相关、减法和乘法
 	def rel_transform(self, ent_embed, rel_embed):
 		if   self.p.opn == 'corr': 	
 			trans_embed  = ccorr(ent_embed, rel_embed)

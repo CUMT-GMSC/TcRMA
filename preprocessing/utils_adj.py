@@ -34,7 +34,7 @@ def sparse_mx_to_torch_sparse_tensor(sparse_mx):
     shape = torch.Size(sparse_mx.shape)
     return torch.sparse_coo_tensor(indices, values, shape, dtype=torch.float32)
 
-#约束规则
+
 def create_adj_from_dict(triples, num_ents, num_rels, threshold):
     """
     Parameter:
@@ -157,13 +157,12 @@ def construct_relation_focus_matrix_old(data, entity_idxs, rel_idxs, threshold):
     return edge_mat
 
 
-def construct_relation_focus_matrix_nosim(data, entity_idxs, rel_idxs, dataset=None):
-    """
-    实体、关系作为节点 根据共现
-    """
-    num_relations = int(len(rel_idxs) / 2) # 不包含逆关系的数量
 
-    # --- 构建结构共现信息 ---
+def construct_relation_focus_matrix_nosim(data, entity_idxs, rel_idxs, dataset=None):
+   
+    num_relations = int(len(rel_idxs) / 2) 
+
+
     head_rel_dict = defaultdict(set)
     tail_rel_dict = defaultdict(set)
     ent_set = set()
@@ -184,7 +183,7 @@ def construct_relation_focus_matrix_nosim(data, entity_idxs, rel_idxs, dataset=N
         as_head_set = tail_rel_dict[ent]
         for ele in as_tail_set:
             for ele2 in as_head_set:
-                # 忽略逆关系自连
+                
                 if (ele % num_relations) == (ele2 % num_relations):
                     continue
                 str_key = "{}_{}_{}".format(ele, ent, ele2)
@@ -192,6 +191,7 @@ def construct_relation_focus_matrix_nosim(data, entity_idxs, rel_idxs, dataset=N
                     new_triple_text.add(str_key)
                     new_triple.append([ele, ent, ele2])
 
+  
     edge_index = []
     edge_type = []
     
@@ -204,7 +204,7 @@ def construct_relation_focus_matrix_nosim(data, entity_idxs, rel_idxs, dataset=N
         
         value1, value2, value3 = 1, 1, 1 
 
-        # 去重逻辑
+      
         if "{}_{}".format(r1, e) in seen_r1e: value1 = 0
         else: seen_r1e.add("{}_{}".format(r1, e))
         
@@ -214,30 +214,27 @@ def construct_relation_focus_matrix_nosim(data, entity_idxs, rel_idxs, dataset=N
         if "{}_{}".format(r1, r2) in seen_r1r2: value3 = 0
         else: seen_r1r2.add("{}_{}".format(r1, r2))
 
-        # 添加 Type 0: r1 - e
+        # Type 0: r1 - e
         if value1 > 0:
             edge_index.append((r1 + len(entity_idxs), e))
             edge_type.append(0)
             edge_index.append((e, r1 + len(entity_idxs)))
             edge_type.append(0)
             
-        # 添加 Type 1: e - r2
+        #  Type 1: e - r2
         if value2 > 0:
             edge_index.append((e, r2 + len(entity_idxs)))
             edge_type.append(1)
             edge_index.append((r2 + len(entity_idxs), e))
             edge_type.append(1)
             
-        # 添加 Type 2: r1 - r2 (结构共现)
+        #  Type 2: r1 - r2 (结构共现)
         if value3 > 0:
             edge_index.append((r1 + len(entity_idxs), r2 + len(entity_idxs)))
             edge_type.append(2)
             edge_index.append((r2 + len(entity_idxs), r1 + len(entity_idxs)))
             edge_type.append(2)
 
-    # print(f"仅结构边: 添加了 {len(new_triple)} 个关系三元组")
-
-    # 转换为 Tensor
     edge_index = torch.LongTensor(edge_index).to(device).t()
     edge_type = torch.LongTensor(edge_type).to(device)
     
@@ -245,29 +242,10 @@ def construct_relation_focus_matrix_nosim(data, entity_idxs, rel_idxs, dataset=N
 
 
 def construct_entity_focus_matrix(data, entity_idxs, rel_idxs):
-    """
-    构建实体角度的邻接矩阵，返回edge_index和edge_type格式
     
-    Parameters
-    ----------
-    data: list
-        三元组数据 [(head, rel, tail), ...]
-    entity_idxs: dict
-        实体到ID的映射
-    rel_idxs: dict
-        关系到ID的映射
-        
-    Returns
-    -------
-    edge_index: torch.LongTensor
-        shape (2, num_edges), 边的起始和目标节点
-    edge_type: torch.LongTensor  
-        shape (num_edges,), 每条边对应的关系类型
-    """
     edge_index = []
     edge_type = []
-    
-    # 只添加原始方向的边
+ 
     for hrt in data:
         head = entity_idxs[hrt[0]]
         rel = rel_idxs[hrt[1]]

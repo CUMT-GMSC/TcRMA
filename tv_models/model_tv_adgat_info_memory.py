@@ -1,4 +1,6 @@
 from helper import *
+
+
 from tv_models.ent_encoder_adgat import ent_adGat
 from tv_models.rel_encoder_adgat_memory import rel_adGat_memory
 
@@ -43,18 +45,17 @@ class CompGCNBase(BaseModel):
     def __init__(self, ent_edge_index, ent_edge_type, rel_edge_index, rel_edge_type, num_rel, params=None):
         super(CompGCNBase, self).__init__(params)
         
-        #设置GCN维度：如果只有1层GCN，则使用embed_dim作为维度，否则使用指定的gcn_dim
+        
         self.p.gcn_dim		= self.p.embed_dim if self.p.gcn_layer == 1 else self.p.gcn_dim 
 
-        # 双视图的边信息
-        # 邻接矩阵稀疏化
+      
         self.ent_view_edge_index = ent_edge_index
         self.ent_view_edge_type = ent_edge_type
         self.rel_view_edge_index = rel_edge_index
         self.rel_view_edge_type = rel_edge_type
         self.device = self.ent_view_edge_index.device
         
-        # 构造稀疏邻接矩阵
+      
         if isinstance(self.ent_view_edge_index, torch.Tensor) and self.ent_view_edge_index.dim() == 2:
             num_nodes = self.p.num_ent
             values = torch.ones(self.ent_view_edge_index.size(1), device=self.ent_view_edge_index.device)
@@ -68,17 +69,18 @@ class CompGCNBase(BaseModel):
         else:
             self.rel_adj_sparse = None
 
-        self.entity_to_topic = self.load_entity_topics()
+        self.type_embeddings = self.load_type_embeddings()
         self.text_embeddings = self.load_text_embeddings()
         self.relation_fingerprints = self.load_relation_fingerprints()
         
+       
         if self.relation_fingerprints is not None:
             self.relation_fingerprints = self.relation_fingerprints.to(self.device)
 
-        self.entity_embed_dim = self.p.init_dim  # 实体初始嵌入维度
-        self.type_embed_dim = self.p.init_dim  # 类型嵌入维度
-        self.semantic_embed_dim = self.p.init_dim  # 语义嵌入维度
-        self.total_embed_dim = self.entity_embed_dim + self.type_embed_dim + self.semantic_embed_dim  # 总维度
+        self.entity_embed_dim = self.p.init_dim  
+        self.type_embed_dim = self.p.init_dim  #
+        self.semantic_embed_dim = self.p.init_dim 
+        self.total_embed_dim = self.entity_embed_dim + self.type_embed_dim + self.semantic_embed_dim  #
 
         self.proj_str = torch.nn.Sequential(
         torch.nn.Linear(self.entity_embed_dim, self.p.init_dim),
@@ -93,40 +95,24 @@ class CompGCNBase(BaseModel):
         torch.nn.LayerNorm(self.p.init_dim)
         )
 
-       #  定义门控网络
+     
         self.gate_network = torch.nn.Sequential(
         torch.nn.Linear(self.total_embed_dim, self.total_embed_dim),
         torch.nn.ReLU(),
-        torch.nn.Linear(self.total_embed_dim, 3),
+        torch.nn.Linear(self.total_embed_dim, 3), 
         torch.nn.Softmax(dim=-1)
           )
         
 
         self.init_embed = get_param((self.p.num_ent, self.entity_embed_dim))
-        
-        # 初始化主题嵌入
-        if self.entity_to_topic:
-            # 主题数量
-            self.num_topics = max(self.entity_to_topic.values()) + 1
-            # [num_topics, type_embed_dim]
-            self.topic_embed = get_param((self.num_topics, self.type_embed_dim))
-            #  [num_ent]
-            self.topic_indices = torch.LongTensor([
-                self.entity_to_topic.get(str(i), 0) for i in range(self.p.num_ent)
-            ])
-        else:
-            self.num_topics = None
-            self.topic_embed = get_param((self.p.num_ent, self.type_embed_dim))
-            self.topic_indices = None
-            print("未找到主题信息，使用独立的类型嵌入")
-        
+        self.topic_embed = self.initialize_type_embeddings()
         self.text_embed = self.initialize_text_embeddings()
 
-        # 根据评分函数选择初始化关系嵌入矩阵
+      
         if self.p.score_func == 'transe':
             self.init_rel = get_param((num_rel, self.total_embed_dim))
         else:
-            self.init_rel = get_param((num_rel*2, self.total_embed_dim))  # num_rel*2考虑了反向关系
+            self.init_rel = get_param((num_rel*2, self.total_embed_dim))  #
 
 
 
@@ -143,11 +129,11 @@ class CompGCNBase(BaseModel):
         self.linear_ents = torch.nn.ParameterList()
         self.linear_ents_cor = torch.nn.ParameterList()
 
-        # 注意力机制参数
+      
         self.attention_weights = torch.nn.ParameterList()
         self.attention_bias = torch.nn.ParameterList()
 
-        # 门控融合参数
+       
         self.gate_weights_ef = torch.nn.ParameterList()
         self.gate_weights_rf = torch.nn.ParameterList()
         self.gate_bias = torch.nn.ParameterList()
@@ -156,11 +142,11 @@ class CompGCNBase(BaseModel):
             self.linear_ents.append(Parameter(torch.FloatTensor(self.total_embed_dim // 2,self.total_embed_dim)))
             self.linear_ents_cor.append(Parameter(torch.FloatTensor(self.total_embed_dim // 4, self.total_embed_dim)))
 
-            # 注意力权重矩阵：将两个视图的特征映射到注意力空间
+           
             self.attention_weights.append(Parameter(torch.FloatTensor(self.p.gcn_dim, self.p.gcn_dim)))
             self.attention_bias.append(Parameter(torch.zeros(self.p.gcn_dim)))
 
-            # 门控机制参数：用于计算门控值
+           
             self.gate_weights_ef.append(Parameter(torch.FloatTensor(self.p.gcn_dim, self.p.gcn_dim)))
             self.gate_weights_rf.append(Parameter(torch.FloatTensor(self.p.gcn_dim, self.p.gcn_dim)))
             self.gate_bias.append(Parameter(torch.zeros(self.p.gcn_dim)))
@@ -168,41 +154,28 @@ class CompGCNBase(BaseModel):
 
         self.register_parameter('bias', Parameter(torch.zeros(self.p.num_ent)))
 
-    def load_entity_topics(self):
-        entity_topics_path = f'./data/{self.p.dataset}/info/entity_topics.txt'
-        entity_to_topic = {}
-        
-        if os.path.exists(entity_topics_path):
+    def load_type_embeddings(self):
+        type_embed_path = f'./data/{self.p.dataset}/info/entity_type_embeddings.npy'
+
+        if os.path.exists(type_embed_path):
             try:
-                with open(entity_topics_path, 'r', encoding='utf-8') as f:
-                    for line in f:
-                        parts = line.strip().split()
-                        if len(parts) >= 2:
-                            entity_id = parts[0]
-                            topic = int(parts[1])
-                            entity_to_topic[entity_id] = topic
-                # print(f"加载实体主题数据，数量: {len(entity_to_topic)}")
+                type_embeddings = np.load(type_embed_path)
+                return torch.FloatTensor(type_embeddings)
             except Exception as e:
-                print(f"error: {e}")
+                return None
         else:
-            print(f"实体主题文件不存在: {entity_topics_path}")
-        
-        return entity_to_topic
+            return None
 
     def load_relation_fingerprints(self):
-        """加载关系分布矩阵"""
-        fingerprints_path = f'./data/{self.p.dataset}/rel_matrix_notext/relation_fingerprints.pt'
+        fingerprints_path = f'./data/{self.p.dataset}/info/relation_fingerprints.pt'
         
         if os.path.exists(fingerprints_path):
             try:
                 fingerprints = torch.load(fingerprints_path, weights_only=True)
-                # print(f"关系分布矩阵形状: {fingerprints.shape}")
                 return fingerprints
             except Exception as e:
-                print(f"error: {e}")
                 return None
         else:
-            print(f"关系分布文件不存在: {fingerprints_path}")
             return None
 
     def load_text_embeddings(self):
@@ -211,25 +184,45 @@ class CompGCNBase(BaseModel):
         if os.path.exists(text_embed_path):
             try:
                 text_embeddings = np.load(text_embed_path)
-                #print(f"文本嵌入形状: {text_embeddings.shape}")
                 return torch.FloatTensor(text_embeddings)
             except Exception as e:
-                print(f"加载失败: {e}")
                 return None
         else:
-            print(f"文本嵌入文件不存在: {text_embed_path}")
             return None
+
+    def initialize_type_embeddings(self):
+        if self.type_embeddings is not None:
+            type_embeddings = self.type_embeddings
+
+            if type_embeddings.size(0) != self.p.num_ent:
+                if type_embeddings.size(0) > self.p.num_ent:
+                    type_embeddings = type_embeddings[:self.p.num_ent]
+                else:
+                    padded = torch.zeros((self.p.num_ent, type_embeddings.size(1)))
+                    padded[:type_embeddings.size(0)] = type_embeddings
+                    type_embeddings = padded
+
+            if type_embeddings.size(1) != self.type_embed_dim:
+                if type_embeddings.size(1) > self.type_embed_dim:
+                    type_embeddings = type_embeddings[:, :self.type_embed_dim]
+                else:
+                    padded = torch.zeros((self.p.num_ent, self.type_embed_dim))
+                    padded[:, :type_embeddings.size(1)] = type_embeddings
+                    type_embeddings = padded
+
+            
+            return Parameter(type_embeddings.clone())
+
+        
+        return get_param((self.p.num_ent, self.type_embed_dim))
 
     def initialize_text_embeddings(self):
         if self.text_embeddings is not None:
-            # 检查维度是否匹配
+          
             if self.text_embeddings.size(1) == self.semantic_embed_dim:
                 if self.text_embeddings.size(0) == self.p.num_ent:
-                    print("使用预计算的文本嵌入")
                     return Parameter(self.text_embeddings.clone())
                 else:
-                    # 截取或填充
-                    print(f"文本嵌入实体数量不匹配：预计算{self.text_embeddings.size(0)} vs 需要{self.p.num_ent}")
                     if self.text_embeddings.size(0) > self.p.num_ent:
                         text_embed = self.text_embeddings[:self.p.num_ent]
                     else:
@@ -237,90 +230,60 @@ class CompGCNBase(BaseModel):
                         text_embed[:self.text_embeddings.size(0)] = self.text_embeddings
                     return Parameter(text_embed)
             else:
-                print(f"文本嵌入维度不匹配：预计算{self.text_embeddings.size(1)} vs 需要{self.semantic_embed_dim}")
+                print(f"文本嵌入维度不匹配")
         
-        # 如果没有预计算嵌入或维度不匹配，初始化为零
-        print("初始化文本嵌入为零向量")
         return Parameter(torch.zeros((self.p.num_ent, self.semantic_embed_dim)))
 
     def get_combined_embeddings(self):
-        """
-        使用门控机制动态融合三种嵌入，保持total_embed_dim维度
-        """
-        init_embed = self.init_embed.to(self.device)
-        
-        # 根据主题映射获取类型嵌入
-        if self.topic_indices is not None:
-            # 使用共享的主题嵌入：根据每个实体的主题ID查表
-            topic_indices = self.topic_indices.to(self.device)
-            topic_embed = self.topic_embed[topic_indices]  # [num_ent, type_embed_dim]
-        else:
-            topic_embed = self.topic_embed.to(self.device)
-        
-        text_embed = self.text_embed.to(self.device)
-        
-        combined_embeddings = torch.cat([init_embed, topic_embed, text_embed], dim=1)
+    
       
-        # 输出: [num_ent, total_embed_dim]
+        init_embed = self.init_embed.to(self.device)
+        topic_embed = self.topic_embed.to(self.device)
+        text_embed = self.text_embed.to(self.device)
+    
+        combined_embeddings = torch.cat([init_embed, topic_embed, text_embed], dim=1)
         
         return combined_embeddings
 
     def attention_fusion(self, Xef, Xrf, layer_idx):
-        """
-        使用注意力机制融合两个视图的特征
-        """
-        # 计算注意力分数
         attention_ef = torch.tanh(torch.mm(Xef, self.attention_weights[layer_idx]) + self.attention_bias[layer_idx])
         attention_rf = torch.tanh(torch.mm(Xrf, self.attention_weights[layer_idx]) + self.attention_bias[layer_idx])
         
-        # 计算注意力权重 (softmax归一化)
         attention_scores = torch.stack([attention_ef, attention_rf], dim=2)  # [num_entities, gcn_dim, 2]
         attention_weights = F.softmax(attention_scores, dim=2)  # [num_entities, gcn_dim, 2]
         
-        # 提取各视图的权重
         weight_ef = attention_weights[:, :, 0]  # [num_entities, gcn_dim]
         weight_rf = attention_weights[:, :, 1]  # [num_entities, gcn_dim]
         
-        # 加权融合
         fused_features = weight_ef * Xef + weight_rf * Xrf
         
         return fused_features
 
     def gate_fusion(self, Xef, Xrf, layer_idx):
-        """
-        使用门控机制融合两个视图的特征
-        """
-        # 计算门控值
-        # g = sigmoid(W_ef * Xef + W_rf * Xrf + b)
         gate_ef = torch.mm(Xef, self.gate_weights_ef[layer_idx])
         gate_rf = torch.mm(Xrf, self.gate_weights_rf[layer_idx])
         gate = torch.sigmoid(gate_ef + gate_rf + self.gate_bias[layer_idx])
         
-        # 门控融合: output = gate ⊙ Xef + (1-gate) ⊙ Xrf
         fused_features = gate * Xef + (1 - gate) * Xrf
         
         return fused_features
 
     def forward_base(self, sub, rel):
-        # 如果不是'transe'评分函数，直接使用初始关系向量 ;如果是'transe'，将初始关系向量和其负值拼接(考虑反向关系)
+       
         r   = self.init_rel if self.p.score_func != 'transe' else torch.cat([self.init_rel, -self.init_rel], dim=0)
         
         X   = self.get_combined_embeddings()
         X   = self.input_dropout(X)
         R   = r
-       
-
+    
         for _layer in range(self.p.gcn_layer):
             XR = torch.cat((X, R), dim=0)
-          
             Xef, r ,_= self.conv_e[_layer](X, self.ent_view_edge_index, self.ent_view_edge_type, r)
-            # 将relation_fingerprints传入，如果为None则传入全1矩阵
             fingerprints = self.relation_fingerprints 
             XRrf, r,_,_ = self.conv_r[_layer](XR, self.rel_view_edge_index, self.rel_view_edge_type, r, fingerprints)
            
             Xrf = XRrf[:X.size(0)]
             r = XRrf[X.size(0):]
-            # x_prev = x  #
             
             if self.p.combine_type == "sum":
                 X = Xef + Xrf
@@ -334,10 +297,6 @@ class CompGCNBase(BaseModel):
             elif self.p.combine_type == "gate":
                 X = self.gate_fusion(Xef, Xrf, _layer)
             
-            # if x.shape == x_prev.shape:
-            #     x = x + x_prev
-            # else:
-            #     x = x + torch.nn.functional.linear(x_prev, torch.eye(x_prev.shape[1], x.shape[1], device=x_prev.device))
             X = self.gcn_dropout(X)
 
 
